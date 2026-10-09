@@ -43,6 +43,14 @@ class ResponsesApiLanguageModelHandlerArguments(LanguageModelBaseArguments):
             "preserving the previous gpt-5.4-mini reasoning behavior."
         },
     )
+    responses_api_temperature: Optional[float] = field(
+        default=None,
+        metadata={"help": "Sampling temperature for text-input LLM requests. Default is None (provider default)."},
+    )
+    responses_api_max_tokens: Optional[int] = field(
+        default=None,
+        metadata={"help": "Maximum output tokens for text-input LLM requests. Default is None (provider default)."},
+    )
     responses_api_audio_max_tokens: int = field(
         default=256,
         metadata={"help": "Maximum chat completion tokens for audio-input LLM requests. Default is 256."},

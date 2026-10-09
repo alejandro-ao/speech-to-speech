@@ -202,6 +202,9 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         audio_temperature: float = 0.0,
         audio_content_type: Literal["input_audio", "audio_url"] = "input_audio",
         audio_history_turns: int = 1,
+        raw_system_prompt: bool = False,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
         **_kwargs: Any,
     ) -> None:
         self.cancel_scope = cancel_scope
@@ -210,6 +213,9 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         self.stream = stream
         self.stream_batch_sentences = max(1, stream_batch_sentences)
         self.enable_lang_prompt = enable_lang_prompt
+        self.raw_system_prompt = raw_system_prompt
+        self.temperature = temperature
+        self.max_tokens = max_tokens
         self.gen_kwargs = dict(gen_kwargs)
         self.audio_max_tokens = audio_max_tokens
         self.audio_temperature = audio_temperature
@@ -237,7 +243,8 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         self._prefetch_worker_slots = BoundedSemaphore(PREFETCH_PROVIDER_WORKER_LIMIT)
         self._prefetch_workers_lock = Lock()
         self._prefetch_workers: set[Thread] = set()
-        self.compactor = build_compactor(self._build_compaction_generate_fn()) if compact_history else None
+        use_compactor = compact_history and not raw_system_prompt
+        self.compactor = build_compactor(self._build_compaction_generate_fn()) if use_compactor else None
         self.warmup()
 
     @staticmethod
@@ -334,6 +341,17 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
     def _build_optional_kwargs(self, req_tools: Any, req_tool_choice: Any) -> dict[str, Any]:
         """Build the per-request tools/tool_choice kwargs in the backend's shape."""
         ...
+
+    _max_tokens_key = "max_tokens"
+
+    def _sampling_kwargs(self) -> dict[str, Any]:
+        """Explicitly configured sampling params for text-input requests; unset ones use provider defaults."""
+        kwargs: dict[str, Any] = {}
+        if self.temperature is not None:
+            kwargs["temperature"] = self.temperature
+        if self.max_tokens is not None:
+            kwargs[self._max_tokens_key] = self.max_tokens
+        return kwargs
 
     # ── audio-input protocol hooks ───────────────────────────────────────────
 
@@ -520,6 +538,10 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         *,
         language_name: str | None = None,
     ) -> None:
+        if self.raw_system_prompt:
+            if instructions:
+                chat.prepend_instructions(instructions)
+            return
         if not instructions and not language_name:
             return
         builder = build_voice_system_prompt if wants_audio else build_text_system_prompt
@@ -1188,6 +1210,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         self._apply_config(active_chat, instructions, wants_audio, language_name=lang_name)
 
         optional_kwargs = self._build_optional_kwargs(req_tools, req_tool_choice)
+        optional_kwargs.update(self._sampling_kwargs())
 
         # CancelScope.is_stale(gen) is checked when the stream iterator advances; a
         # blocked read inside httpx cannot be aborted by cancel_scope.cancel() from

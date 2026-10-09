@@ -44,3 +44,11 @@ class LanguageModelBaseArguments:
             "instead of synchronously evicting them. Adds an extra LLM call per compaction. Default is True."
         },
     )
+    raw_system_prompt: bool = field(
+        default=False,
+        metadata={
+            "help": "When True, send the session instructions verbatim as the system prompt: no voice/text "
+            "channel rules, tool section, or language instruction are added, and history compaction is "
+            "disabled. Default is False."
+        },
+    )

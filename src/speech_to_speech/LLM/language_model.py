@@ -189,9 +189,11 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         stream_batch_sentences: int = 3,
         enable_lang_prompt: bool = False,
         compact_history: bool = False,
+        raw_system_prompt: bool = False,
         **_kwargs: Any,
     ) -> None:
         self.backend = backend
+        self.raw_system_prompt = raw_system_prompt
         self.cancel_scope = cancel_scope
         self.speculative_turns = speculative_turns
         self.device = device
@@ -207,7 +209,8 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         # response path and the background compaction worker. MLX paths use
         # MLXLockContext instead.
         self._transformers_lock = Lock()
-        self.compactor = build_compactor(self._build_compaction_generate_fn()) if compact_history else None
+        use_compactor = compact_history and not raw_system_prompt
+        self.compactor = build_compactor(self._build_compaction_generate_fn()) if use_compactor else None
 
     def _turn_is_latest(self, turn_id: str | None, turn_revision: int | None) -> bool:
         return self.speculative_turns is None or self.speculative_turns.is_latest(turn_id, turn_revision)
@@ -282,6 +285,10 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         *,
         language_name: str | None = None,
     ) -> None:
+        if self.raw_system_prompt:
+            if instructions:
+                chat.prepend_instructions(instructions)
+            return
         if not instructions and not language_name:
             return
 

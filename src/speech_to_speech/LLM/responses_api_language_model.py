@@ -63,6 +63,8 @@ def _response_end(response: Any, *, status: str | None = None) -> ProviderRespon
 class ResponsesApiModelHandler(BaseOpenAICompatibleHandler):
     """LLM handler that talks to an OpenAI ``/v1/responses`` server."""
 
+    _max_tokens_key = "max_output_tokens"
+
     @classmethod
     def _build_extra_body(
         cls,
