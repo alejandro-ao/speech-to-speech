@@ -43,6 +43,13 @@ class ResponsesApiLanguageModelHandlerArguments(LanguageModelBaseArguments):
             "preserving the previous gpt-5.4-mini reasoning behavior."
         },
     )
+    responses_api_extra_body: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": 'JSON object merged into every request body, e.g. \'{"provider": {"order": ["anthropic"], '
+            '"allow_fallbacks": false}}\' to pin an OpenRouter host. Default is None.'
+        },
+    )
     responses_api_request_log: Optional[str] = field(
         default=None,
         metadata={

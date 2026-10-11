@@ -182,6 +182,25 @@ def _request_chat_completions(
     )
 
 
+class _FirstChunkHook:
+    """Wrap a response stream to call ``on_first`` with its first chunk, passing everything else through."""
+
+    def __init__(self, stream: Any, on_first: Any) -> None:
+        self._stream = stream
+        self._on_first = on_first
+
+    def __iter__(self) -> Iterator[Any]:
+        first = True
+        for chunk in self._stream:
+            if first:
+                first = False
+                self._on_first(chunk)
+            yield chunk
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._stream, name)
+
+
 def _tool_calls_from_accum(tool_accum: dict[int, dict[str, str]]) -> Iterator[ToolCall]:
     """Turn accumulated Chat Completions tool deltas into normalized tool-call events."""
     for index in sorted(tool_accum):
@@ -367,7 +386,7 @@ class ChatCompletionsApiModelHandler(BaseOpenAICompatibleHandler):
         return _build_chat_optional_kwargs(req_tools, req_tool_choice)
 
     def _request(self, api_input: list[dict[str, Any]], optional_kwargs: dict[str, Any]) -> Any:
-        return _request_chat_completions(
+        response = _request_chat_completions(
             client=self.client,
             model_name=self.model_name,
             messages=api_input,
@@ -376,6 +395,12 @@ class ChatCompletionsApiModelHandler(BaseOpenAICompatibleHandler):
             timeout=self.request_timeout,
             optional_kwargs=optional_kwargs,
         )
+        if not self.request_log:
+            return response
+        if self.stream:
+            return _FirstChunkHook(response, self._log_response_meta)
+        self._log_response_meta(response)
+        return response
 
     def _iter_stream_events(self, api_response: Stream[ChatCompletionChunk]) -> Iterator[ProviderEvent]:
         yield from _iter_chat_stream_events(api_response)

@@ -208,6 +208,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         request_log: Optional[str] = None,
+        extra_body: Optional[str] = None,
         **_kwargs: Any,
     ) -> None:
         self.cancel_scope = cancel_scope
@@ -245,6 +246,8 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             api_key = "none"
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self._extra_body = self._build_extra_body(base_url, disable_thinking, reasoning_effort)
+        if extra_body:
+            self._extra_body = {**(self._extra_body or {}), **json.loads(extra_body)}
         self._prefetch_worker_slots = BoundedSemaphore(PREFETCH_PROVIDER_WORKER_LIMIT)
         self._prefetch_workers_lock = Lock()
         self._prefetch_workers: set[Thread] = set()
@@ -363,6 +366,24 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             "params": optional_kwargs,
             "input": api_input,
         }
+        self._append_request_log(record)
+
+    def _log_response_meta(self, response: Any) -> None:
+        """Record who actually answered: the provider's response id, served model and (OpenRouter) host."""
+        if not self.request_log:
+            return
+        extra = getattr(response, "model_extra", None) or {}
+        self._append_request_log(
+            {
+                "ts": time.time(),
+                "purpose": "response_meta",
+                "id": getattr(response, "id", None),
+                "model": getattr(response, "model", None),
+                "provider": getattr(response, "provider", None) or extra.get("provider"),
+            }
+        )
+
+    def _append_request_log(self, record: dict[str, Any]) -> None:
         line = json.dumps(record, ensure_ascii=False, default=str)
         with self._request_log_lock, open(self.request_log, "a", encoding="utf-8") as f:
             f.write(line + "\n")

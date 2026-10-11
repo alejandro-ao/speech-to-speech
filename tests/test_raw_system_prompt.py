@@ -122,9 +122,35 @@ def test_request_log_records_exact_system_message_without_key(tmp_path):
     import json
 
     records = [json.loads(line) for line in log.read_text().splitlines()]
-    assert [r["purpose"] for r in records] == ["warmup", "response"]
-    response = records[-1]
+    assert [r["purpose"] for r in records] == ["warmup", "response", "response_meta"]
+    response = records[1]
     system = [m["content"] for m in response["input"] if m["role"] == "system"]
     assert system == [PROMPT]
     assert response["model"] == "test-model"
     assert "api_key" not in log.read_text()
+
+
+def test_extra_body_is_merged_into_every_request():
+    pin = '{"provider": {"order": ["anthropic"], "allow_fallbacks": false}}'
+    handler = _make_handler(raw_system_prompt=True, extra_body=pin)
+    call = _last_call(handler)
+
+    assert call["extra_body"]["provider"] == {"order": ["anthropic"], "allow_fallbacks": False}
+    # The reasoning-related fields built from other flags are kept alongside.
+    assert "chat_template_kwargs" in call["extra_body"]
+
+
+def test_request_log_records_who_answered(tmp_path):
+    import json
+
+    log = tmp_path / "requests.jsonl"
+    handler = _make_handler(raw_system_prompt=True, request_log=str(log))
+    handler.client.chat.completions.next_result.id = "gen-123"
+    handler.client.chat.completions.next_result.model = "anthropic/claude-4.5-sonnet-20250929"
+    handler.client.chat.completions.next_result.provider = "Anthropic"
+    _last_call(handler)
+
+    meta = [json.loads(line) for line in log.read_text().splitlines() if '"response_meta"' in line]
+    assert meta[-1]["id"] == "gen-123"
+    assert meta[-1]["model"] == "anthropic/claude-4.5-sonnet-20250929"
+    assert meta[-1]["provider"] == "Anthropic"
