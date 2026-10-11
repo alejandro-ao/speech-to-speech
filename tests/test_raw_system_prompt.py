@@ -112,3 +112,19 @@ def test_sampling_params_forwarded_when_set():
     call = _last_call(_make_handler(raw_system_prompt=True, temperature=0.7, max_tokens=2048))
 
     assert call["temperature"] == 0.7 and call["max_tokens"] == 2048
+
+
+def test_request_log_records_exact_system_message_without_key(tmp_path):
+    log = tmp_path / "requests.jsonl"
+    handler = _make_handler(raw_system_prompt=True, request_log=str(log))
+    _last_call(handler)
+
+    import json
+
+    records = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [r["purpose"] for r in records] == ["warmup", "response"]
+    response = records[-1]
+    system = [m["content"] for m in response["input"] if m["role"] == "system"]
+    assert system == [PROMPT]
+    assert response["model"] == "test-model"
+    assert "api_key" not in log.read_text()

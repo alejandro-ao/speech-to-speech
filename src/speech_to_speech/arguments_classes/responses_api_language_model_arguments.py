@@ -43,6 +43,13 @@ class ResponsesApiLanguageModelHandlerArguments(LanguageModelBaseArguments):
             "preserving the previous gpt-5.4-mini reasoning behavior."
         },
     )
+    responses_api_request_log: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Append every request sent to the provider (messages, model, parameters; never the API key) "
+            "to this JSONL file, one line per request. Default is None (off)."
+        },
+    )
     responses_api_temperature: Optional[float] = field(
         default=None,
         metadata={"help": "Sampling temperature for text-input LLM requests. Default is None (provider default)."},

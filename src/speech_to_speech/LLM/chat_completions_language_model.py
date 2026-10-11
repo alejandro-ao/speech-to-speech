@@ -308,12 +308,14 @@ class ChatCompletionsApiModelHandler(BaseOpenAICompatibleHandler):
     def warmup(self) -> None:
         logger.info(f"Warming up {self.__class__.__name__}")
         start = time.time()
+        messages = [
+            {"role": "system", "content": "You are a helpful assistant"},
+            {"role": "user", "content": "Hello"},
+        ]
+        self._log_request("warmup", messages, {})
         self.client.with_options(max_retries=WARMUP_MAX_RETRIES).chat.completions.create(
             model=self.model_name,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant"},
-                {"role": "user", "content": "Hello"},
-            ],
+            messages=messages,
             extra_body=self._extra_body,
             timeout=self.request_timeout,
         )

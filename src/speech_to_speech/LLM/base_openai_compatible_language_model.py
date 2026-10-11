@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ipaddress
+import json
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterator
 from queue import Empty, Full, Queue
@@ -205,6 +207,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         raw_system_prompt: bool = False,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        request_log: Optional[str] = None,
         **_kwargs: Any,
     ) -> None:
         self.cancel_scope = cancel_scope
@@ -216,6 +219,8 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         self.raw_system_prompt = raw_system_prompt
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.request_log = request_log
+        self._request_log_lock = Lock()
         self.gen_kwargs = dict(gen_kwargs)
         self.audio_max_tokens = audio_max_tokens
         self.audio_temperature = audio_temperature
@@ -343,6 +348,24 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         ...
 
     _max_tokens_key = "max_tokens"
+
+    def _log_request(self, purpose: str, api_input: Any, optional_kwargs: dict[str, Any]) -> None:
+        """Append the request about to be sent to ``request_log`` (JSONL). The API key is never included."""
+        if not self.request_log:
+            return
+        record = {
+            "ts": time.time(),
+            "purpose": purpose,
+            "model": self.model_name,
+            "base_url": str(getattr(self.client, "base_url", "")),
+            "stream": self.stream,
+            "extra_body": self._extra_body,
+            "params": optional_kwargs,
+            "input": api_input,
+        }
+        line = json.dumps(record, ensure_ascii=False, default=str)
+        with self._request_log_lock, open(self.request_log, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
 
     def _sampling_kwargs(self) -> dict[str, Any]:
         """Explicitly configured sampling params for text-input requests; unset ones use provider defaults."""
@@ -841,6 +864,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     provider_request_started = True
 
                     def make_request() -> Any:
+                        self._log_request("response", api_input, optional_kwargs)
                         return (request_fn or self._request)(api_input, optional_kwargs)
 
                     if turn.prefetch_transaction is not None:
